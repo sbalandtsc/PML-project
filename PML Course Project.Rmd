@@ -1,0 +1,98 @@
+---
+title: "PML Course Project"
+author: "SB"
+date: "12/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+set.seed(12345)
+```
+
+## Project Goal
+
+This project aims to predict how well barbell lifts are performed using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The participants were asked to perform the barbell lifts correctly and incorrectly in five different ways. The manner in which the exercise was performed is recorded in the "classe" variable in the dataset.
+
+## Loading and Cleaning the Dataset
+
+```{r, echo = FALSE}
+training = read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+testing = read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+dim(training)
+dim(testing)
+# View(training)
+
+# remove columns with 50% or more NAs
+training = training[,which(colMeans(!is.na(training)) > 0.5)]
+testing = testing[,which(colMeans(!is.na(testing)) > 0.5)]
+
+# remove the first 7 columns
+training = training[, -c(1:7)]
+testing = testing[, -c(1:7)]
+
+# remove predictors with near zero variance
+nsv = nearZeroVar(training, saveMetrics=FALSE)
+training_new = training[,-nsv]
+```
+
+The dataset has `r ncol(training)` variables. Likely not all of them are important for model selection. All variables with more than 50% missing values were removed, as were the first seven variables, since they are unlikely predictors (e.g., the index, the participant names, the time stamps, the window numbers). Furthermore, a total of `r length(nsv)` variables have near zero variance, so they were also removed from the list of possible predictors. That leaves a total of `r ncol(training_new)` possible predictors.
+
+## Approach to Cross Validation and Assessing Out-of-Sample Error
+
+Since the sample size is quite large (`r nrow(training_new)`), 70% of the samples were subsetted for training the model and 30% for validating the model. Model predictions of performance will be evaluated against this validation set and the model that maximizes accuracy and minimizes out-of-sample error will be selected. The out-of-sample error is expected to equal 1-accuracy in the cross-validation data. 
+
+``` {r}
+inTrain = createDataPartition(y=training_new$classe, p=0.7, list=FALSE)
+trainset = training_new[inTrain,]
+validation = training_new[-inTrain,]
+dim(trainset); dim(validation)
+```
+
+## Exploring the Training Set
+
+Figure 1 shows the distribution of the outcome variable "classe", a factor variable with 5 levels. Class A corresponds to the exercise being performed exactly according to the specification, class B corresponds to throwing the elbows to the front, class C corresponds to lifting the dumbbell only halfway, class D corresponds to lowering the dumbbell only halfway, and class E corresponds to throwing the hips to the front.
+
+```{r, echo = FALSE}
+plot(trainset$classe, col="green", main = "Fig. 1: Class variable indicating how well the exercise was performed")
+```
+
+## Building the Model
+
+The following two models were chosen for consideration because they are applicable to factor variables: predicting with trees and random forest.
+
+**Predicting with trees**
+```{r}
+mod_tree = rpart(classe~., data=trainset, method = "class")
+rpart.plot(mod_tree, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+pred_tree = predict(mod_tree, validation, type="class")
+# check model accuracy
+confusionMatrix(pred_tree, validation$classe)
+```
+The decision tree model has an accuracy of 0.7392 and estimated out-of-sample error of `r 1-0.7392`.
+
+**Random forest**
+```{r}
+mod_rf = randomForest(classe~., data=trainset, method="class")
+pred_rf = predict(mod_rf, validation, type="class")
+# check model accuracty
+confusionMatrix(pred_rf, validation$classe)
+```
+The random forest model has an accuracy of 0.9966 and estimated out-of-sample error of `r 1-0.9966`.
+
+Therefore, the random forest model was chosen because it performs best on the validation data.
+
+## Prediction Using the Original Testing Dataset
+
+The random forest model was used to predict the 20 test cases provided.
+
+```{r}
+predict(mod_rf, testing, type="class")
+```
